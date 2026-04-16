@@ -6,6 +6,10 @@ import Footer from '../components/Footer.astro';
 
 const pageTitle = 'Make a Payment | All Seasons Living';
 const pageDescription = 'Make a secure payment online for your All Seasons Living project';
+const stripePublishableKey =
+  import.meta.env.PUBLIC_STRIPE_PUBLISHABLE_KEY ||
+  import.meta.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
+  '';
 ---
 
 <!doctype html>
@@ -77,7 +81,7 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
 
         <div class="payment-form-container">
           <!-- Step 1: Customer Information -->
-          <form id="customerInfoForm" class="payment-form">
+          <form id="customerInfoForm" class="payment-form" novalidate>
             <div class="compact-row">
               <div class="form-group">
                 <label for="customerName">Full Name *</label>
@@ -553,9 +557,12 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
   }
 </style>
 
-<script>
+<script src="https://js.stripe.com/v3/"></script>
+
+<script define:vars={{ stripePublishableKey }}>
   // Load Stripe.js
-  const stripe = window.Stripe(import.meta.env.PUBLIC_STRIPE_PUBLISHABLE_KEY);
+  const stripeKey = stripePublishableKey;
+  let stripe = null;
   let elements;
   let clientSecret;
 
@@ -564,19 +571,69 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
   const btnText = document.getElementById('btnText');
   const btnSpinner = document.getElementById('btnSpinner');
   const formMessage = document.getElementById('formMessage');
+  const searchParams = new URLSearchParams(window.location.search);
+
+  function getStripeInstance() {
+    if (stripe) return stripe;
+    if (!stripeKey) return null;
+    if (typeof window.Stripe !== 'function') return null;
+
+    stripe = window.Stripe(stripeKey);
+
+    return stripe;
+  }
+
+  // Prefill from secure payment links sent by CRM
+  const prefillMap = {
+    customerName: searchParams.get('customerName') || '',
+    contractNumber: searchParams.get('contractNumber') || '',
+    email: searchParams.get('email') || '',
+    phone: searchParams.get('phone') || '',
+    amount: searchParams.get('amount') || ''
+  };
+
+  Object.entries(prefillMap).forEach(([fieldId, value]) => {
+    if (!value) return;
+    const field = document.getElementById(fieldId);
+    if (field) field.value = value;
+  });
+
+  if (prefillMap.customerName || prefillMap.contractNumber || prefillMap.amount) {
+    showMessage('Your payment link has been prefilled with your order details. Please review before continuing.', 'success');
+  }
 
   // Step 1: Handle customer info form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const customerName = document.getElementById('customerName').value;
-    const contractNumber = document.getElementById('contractNumber').value;
-    const email = document.getElementById('email').value;
-    const phone = document.getElementById('phone').value;
+    const stripeInstance = getStripeInstance();
+
+    if (!stripeInstance) {
+      showMessage('Stripe is not configured for this website.', 'error');
+      return;
+    }
+
+    const customerName = document.getElementById('customerName').value.trim();
+    const contractNumber = document.getElementById('contractNumber').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
     const amount = parseFloat(document.getElementById('amount').value);
+
+    if (!customerName) {
+      showMessage('Please enter your full name.', 'error');
+      document.getElementById('customerName').focus();
+      return;
+    }
+
+    if (!contractNumber) {
+      showMessage('Please enter your contract number.', 'error');
+      document.getElementById('contractNumber').focus();
+      return;
+    }
 
     if (!amount || amount <= 0) {
       showMessage('Please enter a valid amount', 'error');
+      document.getElementById('amount').focus();
       return;
     }
 
@@ -622,6 +679,7 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
   function showStripePaymentForm(formData) {
     // Hide customer info form
     form.style.display = 'none';
+    document.getElementById('payment-element').innerHTML = '';
 
     // Update summary
     document.getElementById('summaryName').textContent = formData.customerName;
@@ -632,7 +690,17 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
     document.getElementById('stripePaymentContainer').style.display = 'block';
 
     // Initialize Stripe Elements
-    elements = stripe.elements({
+    const stripeInstance = getStripeInstance();
+
+    if (!stripeInstance) {
+      showMessage('Stripe is not configured for this website.', 'error');
+      document.getElementById('stripePaymentContainer').style.display = 'none';
+      form.style.display = 'flex';
+      setLoading(false);
+      return;
+    }
+
+    elements = stripeInstance.elements({
       clientSecret,
       appearance: {
         theme: 'stripe',
@@ -658,6 +726,7 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
   document.getElementById('editDetails').addEventListener('click', () => {
     document.getElementById('stripePaymentContainer').style.display = 'none';
     form.style.display = 'flex';
+    document.getElementById('paymentMessage').style.display = 'none';
   });
 
   // Step 2: Handle payment submission
@@ -666,7 +735,15 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
     setPaymentLoading(true);
 
     try {
-      const { error, paymentIntent } = await stripe.confirmPayment({
+      const stripeInstance = getStripeInstance();
+
+      if (!stripeInstance) {
+        showPaymentMessage('Stripe is not configured for this website.', 'error');
+        setPaymentLoading(false);
+        return;
+      }
+
+      const { error, paymentIntent } = await stripeInstance.confirmPayment({
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/pay/success`
@@ -716,6 +793,3 @@ const pageDescription = 'Make a secure payment online for your All Seasons Livin
     paymentMessage.style.display = 'block';
   }
 </script>
-
-<!-- Load Stripe.js -->
-<script src="https://js.stripe.com/v3/" is:inline></script>

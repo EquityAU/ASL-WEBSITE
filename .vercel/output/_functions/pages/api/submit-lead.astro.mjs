@@ -62,13 +62,16 @@ const POST = async ({ request, clientAddress }) => {
         try {
           const referrerUrl = new URL(tracking.referrer);
           const domain = referrerUrl.hostname.toLowerCase();
-          if (domain.includes("google")) return "Google (Organic)";
-          if (domain.includes("facebook")) return "Facebook";
-          if (domain.includes("instagram")) return "Instagram";
-          if (domain.includes("linkedin")) return "LinkedIn";
-          if (domain.includes("twitter") || domain.includes("x.com")) return "Twitter/X";
-          if (domain.includes("youtube")) return "YouTube";
-          return referrerUrl.hostname.replace("www.", "");
+          if (domain.includes("allseasonsliving.com.au")) {
+          } else {
+            if (domain.includes("google")) return "Google (Organic)";
+            if (domain.includes("facebook")) return "Facebook";
+            if (domain.includes("instagram")) return "Instagram";
+            if (domain.includes("linkedin")) return "LinkedIn";
+            if (domain.includes("twitter") || domain.includes("x.com")) return "Twitter/X";
+            if (domain.includes("youtube")) return "YouTube";
+            return referrerUrl.hostname.replace("www.", "");
+          }
         } catch (e) {
         }
       }
