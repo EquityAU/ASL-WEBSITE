@@ -1,9 +1,0 @@
-# Allow all crawlers
-User-agent: *
-Allow: /
-
-# Sitemap location
-Sitemap: https://allseasonsliving.com.au/sitemap-index.xml
-
-# Crawl-delay
-Crawl-delay: 1
