@@ -3,10 +3,10 @@ import type { APIRoute } from 'astro';
 export const POST: APIRoute = async ({ request }) => {
   try {
     const data = await request.json();
-    const { customerName, contractNumber, email, phone, amount } = data;
+    const { customerName, contractNumber, email, phone, amount, paymentToken } = data;
 
     // Validate required fields
-    if (!customerName || !contractNumber || !amount || amount <= 0) {
+    if ((!paymentToken && (!customerName || !contractNumber)) || !amount || amount <= 0) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -30,7 +30,8 @@ export const POST: APIRoute = async ({ request }) => {
         customerName,
         contractNumber,
         email,
-        phone
+        phone,
+        paymentToken
       })
     });
 

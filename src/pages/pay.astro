@@ -356,6 +356,12 @@ const stripePublishableKey =
     box-shadow: 0 0 0 3px rgba(84, 101, 61, 0.1);
   }
 
+  .form-group input[readonly] {
+    background: #f5f7f1;
+    color: #4f5b3a;
+    cursor: default;
+  }
+
   .amount-input-wrapper {
     position: relative;
   }
@@ -632,9 +638,16 @@ const stripePublishableKey =
   const btnText = document.getElementById('btnText');
   const btnSpinner = document.getElementById('btnSpinner');
   const formMessage = document.getElementById('formMessage');
+  const customerNameInput = document.getElementById('customerName');
+  const contractNumberInput = document.getElementById('contractNumber');
+  const emailInput = document.getElementById('email');
+  const phoneInput = document.getElementById('phone');
   const amountInput = document.getElementById('amount');
   const surchargePreview = document.getElementById('surchargePreview');
   const searchParams = new URLSearchParams(window.location.search);
+  const activePaymentToken = searchParams.get('paymentToken') || '';
+  let securePaymentContext = null;
+  let securePaymentError = '';
 
   function roundCurrency(amount) {
     return Math.round(amount * 100) / 100;
@@ -672,6 +685,11 @@ const stripePublishableKey =
     surchargePreview.style.display = 'block';
   }
 
+  function setSecureOrderFieldsLocked(locked) {
+    customerNameInput.readOnly = locked;
+    contractNumberInput.readOnly = locked;
+  }
+
   function getStripeInstance() {
     if (stripe) return stripe;
     if (!stripeKey) return null;
@@ -700,8 +718,57 @@ const stripePublishableKey =
   updateSurchargePreview();
   amountInput.addEventListener('input', updateSurchargePreview);
 
-  if (prefillMap.customerName || prefillMap.contractNumber || prefillMap.amount) {
+  if (activePaymentToken) {
+    loadSecurePaymentLink();
+  } else if (prefillMap.customerName || prefillMap.contractNumber || prefillMap.amount) {
     showMessage('Your payment link has been prefilled with your order details. Please review before continuing.', 'success');
+  }
+
+  async function loadSecurePaymentLink() {
+    continueBtn.disabled = true;
+    showMessage('Loading your secure payment details...', 'success');
+
+    try {
+      const response = await fetch('/api/payment-link-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          paymentToken: activePaymentToken
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to load this secure payment link.');
+      }
+
+      securePaymentContext = data;
+      securePaymentError = '';
+
+      customerNameInput.value = data.customerName || '';
+      contractNumberInput.value = data.contractNumber || '';
+      emailInput.value = data.email || emailInput.value || '';
+      phoneInput.value = data.phone || phoneInput.value || '';
+      amountInput.value = data.amount ? Number(data.amount).toFixed(2) : amountInput.value;
+      amountInput.max = Number(data.outstandingBalance).toFixed(2);
+
+      setSecureOrderFieldsLocked(true);
+      updateSurchargePreview();
+      continueBtn.disabled = false;
+
+      showMessage(
+        'This secure payment link is locked to your contract details. You can update your email or phone number before payment if needed.',
+        'success'
+      );
+    } catch (error) {
+      securePaymentContext = null;
+      securePaymentError = error.message || 'Unable to load this secure payment link.';
+      continueBtn.disabled = true;
+      showMessage(securePaymentError, 'error');
+    }
   }
 
   // Step 1: Handle customer info form submission
@@ -715,27 +782,48 @@ const stripePublishableKey =
       return;
     }
 
-    const customerName = document.getElementById('customerName').value.trim();
-    const contractNumber = document.getElementById('contractNumber').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const phone = document.getElementById('phone').value.trim();
-    const amount = parseFloat(document.getElementById('amount').value);
+    const customerName =
+      securePaymentContext?.customerName || customerNameInput.value.trim();
+    const contractNumber =
+      securePaymentContext?.contractNumber || contractNumberInput.value.trim();
+    const email = emailInput.value.trim();
+    const phone = phoneInput.value.trim();
+    const amount = parseFloat(amountInput.value);
+
+    if (activePaymentToken && securePaymentError) {
+      showMessage(securePaymentError, 'error');
+      return;
+    }
+
+    if (activePaymentToken && !securePaymentContext) {
+      showMessage('Your secure payment link is still loading. Please wait a moment and try again.', 'error');
+      return;
+    }
 
     if (!customerName) {
       showMessage('Please enter your full name.', 'error');
-      document.getElementById('customerName').focus();
+      customerNameInput.focus();
       return;
     }
 
     if (!contractNumber) {
       showMessage('Please enter your contract number.', 'error');
-      document.getElementById('contractNumber').focus();
+      contractNumberInput.focus();
       return;
     }
 
     if (!amount || amount <= 0) {
       showMessage('Please enter a valid amount', 'error');
-      document.getElementById('amount').focus();
+      amountInput.focus();
+      return;
+    }
+
+    if (securePaymentContext && amount > Number(securePaymentContext.outstandingBalance || 0)) {
+      showMessage(
+        `Amount exceeds the outstanding balance of ${formatCurrency(Number(securePaymentContext.outstandingBalance))}.`,
+        'error'
+      );
+      amountInput.focus();
       return;
     }
 
@@ -753,7 +841,8 @@ const stripePublishableKey =
           contractNumber,
           email,
           phone,
-          amount
+          amount,
+          paymentToken: activePaymentToken || undefined
         })
       });
 
