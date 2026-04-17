@@ -53,7 +53,12 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(
       JSON.stringify({
         clientSecret: result.clientSecret,
-        paymentIntentId: result.paymentIntentId
+        paymentIntentId: result.paymentIntentId,
+        paymentId: result.paymentId,
+        baseAmount: result.baseAmount,
+        surchargeAmount: result.surchargeAmount,
+        surchargeRate: result.surchargeRate,
+        totalAmount: result.totalAmount
       }),
       {
         status: 200,

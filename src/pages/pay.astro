@@ -142,6 +142,23 @@ const stripePublishableKey =
                   placeholder="0.00"
                 />
               </div>
+              <div class="surcharge-note">
+                A 1.5% online card surcharge applies to all card payments.
+              </div>
+              <div id="surchargePreview" class="surcharge-preview" style="display: none;">
+                <div class="preview-row">
+                  <span>Contract payment</span>
+                  <strong id="previewBaseAmount">$0.00</strong>
+                </div>
+                <div class="preview-row">
+                  <span>Card surcharge (1.5%)</span>
+                  <strong id="previewSurchargeAmount">$0.00</strong>
+                </div>
+                <div class="preview-row total">
+                  <span>Total charged today</span>
+                  <strong id="previewTotalAmount">$0.00</strong>
+                </div>
+              </div>
             </div>
 
             <!-- Error/Success Messages -->
@@ -178,8 +195,16 @@ const stripePublishableKey =
                   <span>Contract #:</span>
                   <strong id="summaryContract"></strong>
                 </div>
+                <div class="summary-row">
+                  <span>Contract payment:</span>
+                  <strong id="summaryBaseAmount"></strong>
+                </div>
+                <div class="summary-row">
+                  <span>Card surcharge (1.5%):</span>
+                  <strong id="summarySurchargeAmount"></strong>
+                </div>
                 <div class="summary-row total">
-                  <span>Total Amount:</span>
+                  <span>Total charged:</span>
                   <strong id="summaryAmount" class="amount-large"></strong>
                 </div>
               </div>
@@ -349,6 +374,40 @@ const stripePublishableKey =
     padding-left: 2rem;
     font-size: 1.25rem;
     font-weight: 600;
+  }
+
+  .surcharge-note {
+    margin-top: 0.6rem;
+    font-size: 0.84rem;
+    color: #5f684f;
+  }
+
+  .surcharge-preview {
+    margin-top: 0.85rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--radius-sm);
+    background: #f5f7f1;
+    border: 1px solid #d7deca;
+  }
+
+  .preview-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.92rem;
+    color: #334022;
+  }
+
+  .preview-row + .preview-row {
+    margin-top: 0.45rem;
+  }
+
+  .preview-row.total {
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid #c8d1bb;
+    font-weight: 700;
   }
 
   .form-message {
@@ -562,6 +621,7 @@ const stripePublishableKey =
 <script define:vars={{ stripePublishableKey }}>
   // Load Stripe.js
   const stripeKey = stripePublishableKey;
+  const onlineCardSurchargeRate = 0.015;
   let stripe = null;
   let elements;
   let paymentElement;
@@ -572,7 +632,45 @@ const stripePublishableKey =
   const btnText = document.getElementById('btnText');
   const btnSpinner = document.getElementById('btnSpinner');
   const formMessage = document.getElementById('formMessage');
+  const amountInput = document.getElementById('amount');
+  const surchargePreview = document.getElementById('surchargePreview');
   const searchParams = new URLSearchParams(window.location.search);
+
+  function roundCurrency(amount) {
+    return Math.round(amount * 100) / 100;
+  }
+
+  function calculateBreakdown(amount) {
+    const baseAmount = roundCurrency(amount || 0);
+    const surchargeAmount = roundCurrency(baseAmount * onlineCardSurchargeRate);
+    const totalAmount = roundCurrency(baseAmount + surchargeAmount);
+
+    return {
+      baseAmount,
+      surchargeAmount,
+      surchargeRate: onlineCardSurchargeRate,
+      totalAmount
+    };
+  }
+
+  function formatCurrency(amount) {
+    return `$${amount.toFixed(2)}`;
+  }
+
+  function updateSurchargePreview() {
+    const amount = parseFloat(amountInput.value);
+
+    if (!amount || amount <= 0) {
+      surchargePreview.style.display = 'none';
+      return;
+    }
+
+    const breakdown = calculateBreakdown(amount);
+    document.getElementById('previewBaseAmount').textContent = formatCurrency(breakdown.baseAmount);
+    document.getElementById('previewSurchargeAmount').textContent = formatCurrency(breakdown.surchargeAmount);
+    document.getElementById('previewTotalAmount').textContent = formatCurrency(breakdown.totalAmount);
+    surchargePreview.style.display = 'block';
+  }
 
   function getStripeInstance() {
     if (stripe) return stripe;
@@ -598,6 +696,9 @@ const stripePublishableKey =
     const field = document.getElementById(fieldId);
     if (field) field.value = value;
   });
+
+  updateSurchargePreview();
+  amountInput.addEventListener('input', updateSurchargePreview);
 
   if (prefillMap.customerName || prefillMap.contractNumber || prefillMap.amount) {
     showMessage('Your payment link has been prefilled with your order details. Please review before continuing.', 'success');
@@ -668,7 +769,10 @@ const stripePublishableKey =
       showStripePaymentForm({
         customerName,
         contractNumber,
-        amount
+        baseAmount: data.baseAmount ?? amount,
+        surchargeAmount: data.surchargeAmount ?? calculateBreakdown(amount).surchargeAmount,
+        surchargeRate: data.surchargeRate ?? onlineCardSurchargeRate,
+        totalAmount: data.totalAmount ?? calculateBreakdown(amount).totalAmount
       });
 
     } catch (error) {
@@ -686,7 +790,9 @@ const stripePublishableKey =
     // Update summary
     document.getElementById('summaryName').textContent = formData.customerName;
     document.getElementById('summaryContract').textContent = formData.contractNumber;
-    document.getElementById('summaryAmount').textContent = `$${formData.amount.toFixed(2)} AUD`;
+    document.getElementById('summaryBaseAmount').textContent = `${formatCurrency(formData.baseAmount)} AUD`;
+    document.getElementById('summarySurchargeAmount').textContent = `${formatCurrency(formData.surchargeAmount)} AUD`;
+    document.getElementById('summaryAmount').textContent = `${formatCurrency(formData.totalAmount)} AUD`;
 
     // Show Stripe payment container
     document.getElementById('stripePaymentContainer').style.display = 'block';
