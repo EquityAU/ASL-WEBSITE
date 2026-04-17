@@ -564,6 +564,7 @@ const stripePublishableKey =
   const stripeKey = stripePublishableKey;
   let stripe = null;
   let elements;
+  let paymentElement;
   let clientSecret;
 
   const form = document.getElementById('customerInfoForm');
@@ -680,6 +681,7 @@ const stripePublishableKey =
     // Hide customer info form
     form.style.display = 'none';
     document.getElementById('payment-element').innerHTML = '';
+    document.getElementById('paymentMessage').style.display = 'none';
 
     // Update summary
     document.getElementById('summaryName').textContent = formData.customerName;
@@ -716,7 +718,7 @@ const stripePublishableKey =
       }
     });
 
-    const paymentElement = elements.create('payment');
+    paymentElement = elements.create('payment');
     paymentElement.mount('#payment-element');
 
     setLoading(false);
@@ -739,6 +741,20 @@ const stripePublishableKey =
 
       if (!stripeInstance) {
         showPaymentMessage('Stripe is not configured for this website.', 'error');
+        setPaymentLoading(false);
+        return;
+      }
+
+      if (!elements || !paymentElement) {
+        showPaymentMessage('Payment form did not load correctly. Please go back and try again.', 'error');
+        setPaymentLoading(false);
+        return;
+      }
+
+      const { error: submitError } = await elements.submit();
+
+      if (submitError) {
+        showPaymentMessage(submitError.message || 'Please check your payment details.', 'error');
         setPaymentLoading(false);
         return;
       }
