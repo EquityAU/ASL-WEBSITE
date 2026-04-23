@@ -432,7 +432,7 @@
 </style>
 
 <script>
-  import { captureFormData, initializeSessionTracking } from '../utils/formTracking';
+  import { captureFormData, initializeSessionTracking, storePendingEnhancedConversion } from '../utils/formTracking';
 
   // Initialize tracking
   initializeSessionTracking();
@@ -603,6 +603,7 @@
 
         if (response.ok && result.success) {
           // Conversion tracking happens on thank-you page (no race condition)
+          storePendingEnhancedConversion(leadData);
           closeModal();
           window.location.href = '/thank-you';
         } else {

@@ -13,6 +13,10 @@ export const prerender = true;
 ---
 
 <Layout title="Outdoor Blinds, Roller Shutters & Artificial Lawn Canberra" description="Canberra's trusted home improvement specialists. Premium outdoor blinds, roller shutters, and artificial lawn — Australian made with expert installation. Free measure & quote.">
+  <Fragment slot="head">
+    <link rel="preload" as="image" href={heroImage.src} fetchpriority="high" />
+  </Fragment>
+
   <Header />
 
   <main>
@@ -1050,7 +1054,7 @@ export const prerender = true;
 </style>
 
 <script>
-  import { captureFormData, initializeSessionTracking } from '../utils/formTracking';
+  import { captureFormData, initializeSessionTracking, storePendingEnhancedConversion } from '../utils/formTracking';
 
   // Initialize session tracking on page load
   initializeSessionTracking();
@@ -1102,6 +1106,7 @@ export const prerender = true;
         if (response.ok && result.success) {
           console.log('[mainQuoteForm] API call successful');
           // Conversion tracking happens on thank-you page (no race condition)
+          storePendingEnhancedConversion(leadData);
           console.log('[mainQuoteForm] Redirecting to thank-you page...');
           window.location.href = '/thank-you';
         } else {

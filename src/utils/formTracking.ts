@@ -87,6 +87,98 @@ export interface FormSubmission {
   tracking: TrackingData;
 }
 
+interface PendingEnhancedConversionData {
+  email?: string;
+  phone_number?: string;
+  storedAt: string;
+}
+
+const PENDING_ENHANCED_CONVERSION_KEY = 'asl_pending_enhanced_conversion';
+
+function isLocalDebugEnabled(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return import.meta.env.DEV ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1';
+}
+
+function debugEnhancedConversion(message: string, payload?: Record<string, unknown>): void {
+  if (!isLocalDebugEnabled()) {
+    return;
+  }
+
+  console.debug(`[Enhanced Conversion Debug] ${message}`, payload || {});
+}
+
+function normalizeEmail(email?: string): string | undefined {
+  if (!email) return undefined;
+
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || !normalized.includes('@')) {
+    return undefined;
+  }
+
+  const [localPart, domain] = normalized.split('@');
+  if (!localPart || !domain) {
+    return undefined;
+  }
+
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    return `${localPart.replace(/\./g, '')}@${domain}`;
+  }
+
+  return normalized;
+}
+
+function normalizeAustralianPhone(phone?: string): string | undefined {
+  if (!phone) return undefined;
+
+  const digits = phone.replace(/\D/g, '');
+  if (!digits) {
+    return undefined;
+  }
+
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `+61${digits.slice(1)}`;
+  }
+
+  if (digits.startsWith('61')) {
+    return `+${digits}`;
+  }
+
+  if (phone.startsWith('+')) {
+    return phone;
+  }
+
+  return undefined;
+}
+
+function maskEmail(email?: string): string | undefined {
+  if (!email) return undefined;
+
+  const [localPart, domain = ''] = email.split('@');
+  if (!localPart) return undefined;
+
+  const maskedLocal = localPart.length <= 2
+    ? `${localPart[0] || '*'}*`
+    : `${localPart[0]}${'*'.repeat(Math.max(localPart.length - 2, 1))}${localPart[localPart.length - 1]}`;
+
+  return domain ? `${maskedLocal}@${domain}` : maskedLocal;
+}
+
+function maskPhone(phone?: string): string | undefined {
+  if (!phone) return undefined;
+
+  if (phone.length <= 4) {
+    return '*'.repeat(phone.length);
+  }
+
+  return `${phone.slice(0, 3)}${'*'.repeat(Math.max(phone.length - 6, 1))}${phone.slice(-3)}`;
+}
+
 /**
  * Get Facebook Pixel data from cookies
  */
@@ -374,5 +466,104 @@ export function initializeSessionTracking(): void {
 
   } catch (e) {
     console.error('Error initializing session tracking:', e);
+  }
+}
+
+export function storePendingEnhancedConversion(leadData: Partial<LeadData>): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const pendingData: PendingEnhancedConversionData = {
+    email: normalizeEmail(leadData.email),
+    phone_number: normalizeAustralianPhone(leadData.phone),
+    storedAt: new Date().toISOString(),
+  };
+
+  if (!pendingData.email && !pendingData.phone_number) {
+    debugEnhancedConversion('Skipped storing pending enhanced conversion because no eligible fields were available', {
+      hasEmail: Boolean(leadData.email),
+      hasPhone: Boolean(leadData.phone),
+    });
+    return;
+  }
+
+  sessionStorage.setItem(PENDING_ENHANCED_CONVERSION_KEY, JSON.stringify(pendingData));
+
+  debugEnhancedConversion('Stored pending enhanced conversion data', {
+    email: maskEmail(pendingData.email),
+    phone_number: maskPhone(pendingData.phone_number),
+  });
+}
+
+export function firePendingEnhancedConversion(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  let pendingData: PendingEnhancedConversionData | null = null;
+
+  try {
+    const raw = sessionStorage.getItem(PENDING_ENHANCED_CONVERSION_KEY);
+    pendingData = raw ? JSON.parse(raw) as PendingEnhancedConversionData : null;
+  } catch (error) {
+    console.error('Error reading pending enhanced conversion data:', error);
+  }
+
+  if (pendingData && typeof window.gtag !== 'undefined') {
+    const userData: Record<string, string> = {};
+
+    if (pendingData.email) {
+      userData.email = pendingData.email;
+    }
+
+    if (pendingData.phone_number) {
+      userData.phone_number = pendingData.phone_number;
+    }
+
+    if (Object.keys(userData).length > 0) {
+      window.gtag('set', 'user_data', userData);
+      debugEnhancedConversion('Set Google Ads user_data on thank-you page', {
+        email: maskEmail(userData.email),
+        phone_number: maskPhone(userData.phone_number),
+      });
+    }
+  } else {
+    debugEnhancedConversion('No pending enhanced conversion data was applied before thank-you conversion', {
+      hasPendingData: Boolean(pendingData),
+      hasGtag: typeof window.gtag !== 'undefined',
+    });
+  }
+
+  const eventPayload = {
+    event: 'generate_lead',
+    event_category: 'Form',
+    event_label: 'thank-you-page',
+    value: 1,
+  };
+
+  if (typeof window.dataLayer !== 'undefined') {
+    window.dataLayer.push(eventPayload);
+    debugEnhancedConversion('Pushed generate_lead event to dataLayer', {
+      hasPendingData: Boolean(pendingData),
+    });
+  } else if (typeof window.gtag !== 'undefined') {
+    window.gtag('event', 'generate_lead', {
+      event_category: 'Form',
+      event_label: 'thank-you-page',
+      value: 1,
+    });
+    debugEnhancedConversion('Sent generate_lead event via gtag fallback', {
+      hasPendingData: Boolean(pendingData),
+    });
+  }
+
+  sessionStorage.removeItem(PENDING_ENHANCED_CONVERSION_KEY);
+}
+
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+    dataLayer?: any[];
   }
 }

@@ -526,7 +526,7 @@ const { offerBanner } = config;
 </style>
 
 <script>
-  import { captureFormData } from '../utils/formTracking';
+  import { captureFormData, storePendingEnhancedConversion } from '../utils/formTracking';
 
   const modal = document.getElementById('offerModal');
   const backdrop = document.getElementById('offerModalBackdrop');
@@ -659,6 +659,7 @@ const { offerBanner } = config;
       if (response.ok) {
         console.log('[OfferModal] API call successful');
         // Conversion tracking happens on thank-you page (no race condition)
+        storePendingEnhancedConversion(submissionData.lead);
         console.log('[OfferModal] Redirecting to thank-you page...');
         window.location.href = '/thank-you';
       } else {

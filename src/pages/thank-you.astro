@@ -268,17 +268,10 @@ export const prerender = true;
 </style>
 
 <script>
-  // Fire Google Ads conversion event
-  // This runs AFTER the page loads, ensuring the conversion tag has time to fire
-  if (typeof window.dataLayer !== 'undefined') {
-    window.dataLayer.push({
-      event: 'generate_lead',
-      event_category: 'Form',
-      event_label: 'thank-you-page',
-      value: 1
-    });
-    console.log('[ThankYou] generate_lead event pushed to dataLayer');
-  }
+  import { firePendingEnhancedConversion } from '../utils/formTracking';
+
+  // Fire the conversion after restoring any stored lead data for enhanced conversions
+  firePendingEnhancedConversion();
 
   // Track thank you page view in Google Analytics
   if (typeof gtag !== 'undefined') {

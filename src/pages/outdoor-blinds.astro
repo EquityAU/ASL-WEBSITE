@@ -1962,7 +1962,7 @@ const breadcrumbSchema = {
 </style>
 
 <script>
-  import { captureFormData, initializeSessionTracking } from '../utils/formTracking';
+  import { captureFormData, initializeSessionTracking, storePendingEnhancedConversion } from '../utils/formTracking';
 
   initializeSessionTracking();
 
@@ -2024,6 +2024,7 @@ const breadcrumbSchema = {
         const result = await response.json();
 
         if (response.ok && result.success) {
+          storePendingEnhancedConversion(leadData);
           window.location.href = '/thank-you';
         } else {
           throw new Error(result.message || 'Submission failed');
